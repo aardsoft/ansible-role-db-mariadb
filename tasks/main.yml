@@ -1,0 +1,15 @@
+- set_fact:
+    role_packages:
+      - mariadb
+      - mariad-client
+  when: ansible_os_family == "Suse"
+
+- set_fact:
+    role_packages:
+      - mariadb
+      - mariadb-server
+  when: ansible_os_family == "RedHat"
+
+- include_role:
+    name: basic-host
+    tasks_from: install_packages
