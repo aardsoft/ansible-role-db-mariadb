@@ -1,7 +1,7 @@
 - set_fact:
     role_packages:
       - mariadb
-      - mariad-client
+      - mariadb-client
   when: ansible_os_family == "Suse"
 
 - set_fact:
