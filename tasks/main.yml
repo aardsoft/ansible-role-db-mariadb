@@ -1,15 +1,206 @@
-- set_fact:
+# mariadb_passdb            password store to use, default checks in passdb
+#                           variable, and falls back to 'passwordstore'. Any
+#                           password store supporting 'create' and 'length'
+#                           options should work.
+# mariadb_password_create   default check passdb_password_create variable with
+#                           fall back to true. Causes passwords to be generated
+#                           in password store if they don't exist yet
+# mariadb_password_length   default check passdb_password_length variable with
+#                           fall back to 20. Length of passwords to generate
+# mariadb_root_passdb_entry the key for looking up the root password
+# mariadb_dbs               the databases to be created. currently no additional
+#                           options are supported, but is already a dict to allow
+#                           later expansion:
+#
+# mariadb_dbs:
+#   db1:
+#   db2:
+#   db3:
+#
+# mariadb_users             structure containing user names, keys to lookup
+#                           passwords and access rights. Example:
+#
+# mariadb_users:
+#   - name: user1
+#     passdb_entry: mysql/user1
+#     hosts:
+#       - localhost
+#       - some_host
+#     disabled_hosts:
+#       - some_old_host
+#     privs:
+#       - "db1.*:ALL"
+#       - "db2.*:ALL"
+#
+# passdb_entry, name and hosts are mandatory. disabled_hosts is used for
+# removing previously granted access to some specific host mask.
+#
+# To update the root users password, configure mariadb_old_root_passdb_entry,
+# and move(!) the old password to that entry. Then either create a new root
+# password, or let ansible generate one on the next run.
+
+- name: set default password store
+  set_fact:
+    mariadb_passdb: "{{passdb|default('passwordstore')}}"
+  when: mariadb_passdb is undefined
+
+- name: set default password length
+  set_fact:
+    mariadb_password_length: "{{passdb_password_length|default(20)}}"
+  when: mariadb_password_length is undefined
+
+- name: set default for password creation
+  set_fact:
+    mariadb_password_create: "{{passdb_password_create|default(True)}}"
+  when: mariadb_password_create is undefined
+
+- name: set passdb extra arguments
+  set_fact:
+    passdb_extra_arg: " create={{mariadb_password_create}} length={{mariadb_password_length}}"
+
+- name: set role packages for SuSE
+  set_fact:
     role_packages:
       - mariadb
       - mariadb-client
+      - python3-PyMySQL
   when: ansible_os_family == "Suse"
 
-- set_fact:
+# a safe default
+- name: set default PyMySQL for RedHat
+  set_fact:
+    redhat_pymysql_package: python2-PyMySQL
+
+- name: "adjust PyMySQL on Python3 systems (Python: {{ansible_python_version}})"
+  set_fact:
+    redhat_pymysql_package: python3-PyMySQL
+  when: ansible_python_version.split('.')[0] == '3'
+
+- name: set role packages for RedHat {{redhat_pymysql_package}}
+  set_fact:
     role_packages:
       - mariadb
       - mariadb-server
+      - "{{redhat_pymysql_package}}"
   when: ansible_os_family == "RedHat"
+
+- name: set default data directory
+  set_fact:
+    mariadb_data_dir: /srv/sql/mysql
+  when: mariadb_data_dir is undefined
 
 - include_role:
     name: basic-host
     tasks_from: install_packages
+
+- name: create sql data directory
+  file:
+    path: "{{mariadb_data_dir}}"
+    owner: mysql
+    group: mysql
+    mode: 0750
+    state: directory
+
+- name: add configuration files
+  template:
+    src: "{{item}}.j2"
+    dest: "/etc/my.cnf.d/{{item}}"
+    group: mysql
+  with_items:
+    - mysqld.cnf
+
+- name: enable mariadb
+  service: name=mariadb enabled=yes state=started
+
+# this will only work the very first time (=empty root password)
+- name: set password for root/localhost (no-auth)
+  mysql_user:
+    name: root
+    host: localhost
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+  ignore_errors: True
+  when: mariadb_root_passdb_entry is defined
+
+# this will only work if password got moved to an old entry, and new one
+# wasn't set yet
+- name: set password for root/localhost (auth,old-login)
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_old_root_passdb_entry)}}"
+    name: root
+    host: localhost
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+  register: mysql_root_auth_old
+  ignore_errors: True
+  when: >
+    mariadb_old_root_passdb_entry is defined and
+    mariadb_root_passdb_entry is defined
+
+# this should work if a password entry is defined -> throw error if not
+- name: set password for root/localhost (auth)
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    name: root
+    host_all: yes
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+  when: mariadb_root_passdb_entry is defined
+
+- name: drop anonymous users
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    name: ''
+    host_all: yes
+    state: absent
+
+- name: create mariadb databases
+  mysql_db:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    name: "{{item.key}}"
+    encoding: "{{item.value.encoding|default('utf8')}}"
+    state: "{{item.value.state|default('present')}}"
+  with_dict: "{{mariadb_dbs}}"
+  when: mariadb_dbs is defined
+
+- name: drop old hosts for mariadb users
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    host: "{{item.1}}"
+    name: "{{item.0.name}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    state: absent
+  loop: "{{ mariadb_users | subelements('disabled_hosts', 'skip_missing=True') }}"
+  when: mariadb_users is defined
+
+# the structure used for the mariadb users is not ideal for direct lookups, but
+# using a list makes looping with a subelements list significantly easier to
+# implement
+- name: manage mariadb users (no privs)
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    host: "{{item.1}}"
+    name: "{{item.0.name}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    state: "{{item.0.state|default('present')}}"
+  loop: "{{ mariadb_users | subelements('hosts') }}"
+  when: mariadb_users is defined and item.0.privs is undefined
+
+# privs follow the syntax for mysql_user as described in
+# https://docs.ansible.com/ansible/latest/modules/mysql_user_module.html#mysql-user-module
+- name: manage mariadb users (privs)
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    host: "{{item.1}}"
+    name: "{{item.0.name}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    state: "{{item.0.state|default('present')}}"
+    priv: "{{item.0.privs|join('/')}}"
+  loop: "{{ mariadb_users | subelements('hosts', 'skip_missing=True') }}"
+  when: >
+    mariadb_users is defined and
+    item.0.privs is defined
