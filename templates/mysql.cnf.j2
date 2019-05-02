@@ -1,0 +1,4 @@
+#jinja2: lstrip_blocks: True
+# {{ ansible_managed }}
+[mysql]
+default-character-set = {{mariadb_character_set|default('utf8mb4')}}

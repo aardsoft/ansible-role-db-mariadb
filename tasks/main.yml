@@ -93,6 +93,11 @@
     name: basic-host
     tasks_from: install_packages
 
+- name: set default db host
+  set_fact:
+    mariadb_host: localhost
+  when: mariadb_host is undefined
+
 - name: create sql data directory
   file:
     path: "{{mariadb_data_dir}}"
@@ -106,8 +111,15 @@
     src: "{{item}}.j2"
     dest: "/etc/my.cnf.d/{{item}}"
     group: mysql
+  register: mysql_cnf_status
   with_items:
     - mysqld.cnf
+    - mysql.cnf
+    - client.cnf
+
+- name: restart mariadb
+  service: name=mariadb enabled=yes state=restarted
+  when: mysql_cnf_status is changed
 
 - name: enable mariadb
   service: name=mariadb enabled=yes state=started
