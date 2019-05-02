@@ -125,20 +125,30 @@
   service: name=mariadb enabled=yes state=started
 
 # this will only work the very first time (=empty root password)
-- name: set password for root/localhost (no-auth)
+- name: set password for root/localhost (no-auth, socket)
   mysql_user:
     name: root
     host: localhost
+    login_unix_socket: "{{mariadb_socket}}"
     password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
   ignore_errors: True
-  when: mariadb_root_passdb_entry is defined
+  when: mariadb_root_passdb_entry is defined and mariadb_socket is defined
+- name: set password for root/localhost (no-auth, host)
+  mysql_user:
+    name: root
+    host: localhost
+    login_host: "{{mariadb_host}}"
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+  ignore_errors: True
+  when: mariadb_root_passdb_entry is defined mariadb_socket is undefined
 
 # this will only work if password got moved to an old entry, and new one
 # wasn't set yet
-- name: set password for root/localhost (auth,old-login)
+- name: set password for root/localhost (auth,old-login,socket)
   mysql_user:
     login_user: root
     login_password: "{{lookup(mariadb_passdb, mariadb_old_root_passdb_entry)}}"
+    login_unix_socket: "{{mariadb_socket}}"
     name: root
     host: localhost
     password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
@@ -146,67 +156,142 @@
   ignore_errors: True
   when: >
     mariadb_old_root_passdb_entry is defined and
-    mariadb_root_passdb_entry is defined
+    mariadb_root_passdb_entry is defined and
+    mariadb_socket is defined
+- name: set password for root/localhost (auth,old-login,host)
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_old_root_passdb_entry)}}"
+    login_host: "{{mariadb_host}}"
+    name: root
+    host: localhost
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+  ignore_errors: True
+  when: >
+    mariadb_old_root_passdb_entry is defined and
+    mariadb_root_passdb_entry is defined and
+    mariadb_socket is undefined
 
 # this should work if a password entry is defined -> throw error if not
-- name: set password for root/localhost (auth)
+- name: set password for root/localhost (auth,socket)
   mysql_user:
     login_user: root
     login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_unix_socket: "{{mariadb_socket}}"
     name: root
     host_all: yes
     password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
-  when: mariadb_root_passdb_entry is defined
-
-- name: drop anonymous users
+  when: mariadb_root_passdb_entry is defined and mariadb_socket is defined
+- name: set password for root/localhost (auth,host)
   mysql_user:
     login_user: root
     login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_host: "{{mariadb_host}}"
+    name: root
+    host_all: yes
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+  when: mariadb_root_passdb_entry is defined and mariadb_socket is undefined
+
+- name: drop anonymous users (socket)
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_unix_socket: "{{mariadb_socket}}"
     name: ''
     host_all: yes
     state: absent
+  when: mariadb_socket is defined
+- name: drop anonymous users (host)
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_host: "{{mariadb_host}}"
+    name: ''
+    host_all: yes
+    state: absent
+  when: mariadb_socket is undefined
 
-- name: create mariadb databases
+- name: create mariadb databases (socket)
   mysql_db:
     login_user: root
     login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_unix_socket: "{{mariadb_socket}}"
     name: "{{item.key}}"
     encoding: "{{item.value.encoding|default('utf8')}}"
     state: "{{item.value.state|default('present')}}"
   with_dict: "{{mariadb_dbs}}"
-  when: mariadb_dbs is defined
+  when: mariadb_dbs is defined and mariadb_socket is defined
+- name: create mariadb databases (host)
+  mysql_db:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_host: "{{mariadb_host}}"
+    name: "{{item.key}}"
+    encoding: "{{item.value.encoding|default('utf8')}}"
+    state: "{{item.value.state|default('present')}}"
+  with_dict: "{{mariadb_dbs}}"
+  when: mariadb_dbs is defined and mariadb_socket is undefined
 
-- name: drop old hosts for mariadb users
+- name: drop old hosts for mariadb users (socket)
   mysql_user:
     login_user: root
     login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_unix_socket: "{{mariadb_socket}}"
     host: "{{item.1}}"
     name: "{{item.0.name}}"
     password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
     state: absent
   loop: "{{ mariadb_users | subelements('disabled_hosts', 'skip_missing=True') }}"
-  when: mariadb_users is defined
+  when: mariadb_users is defined and mariadb_socket is defined
+- name: drop old hosts for mariadb users (host)
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_host: "{{mariadb_host}}"
+    host: "{{item.1}}"
+    name: "{{item.0.name}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    state: absent
+  loop: "{{ mariadb_users | subelements('disabled_hosts', 'skip_missing=True') }}"
+  when: mariadb_users is defined and mariadb_socket is undefined
 
 # the structure used for the mariadb users is not ideal for direct lookups, but
 # using a list makes looping with a subelements list significantly easier to
 # implement
-- name: manage mariadb users (no privs)
+- name: manage mariadb users (no privs,socket)
   mysql_user:
     login_user: root
     login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_unix_socket: "{{mariadb_socket}}"
     host: "{{item.1}}"
     name: "{{item.0.name}}"
     password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
     state: "{{item.0.state|default('present')}}"
   loop: "{{ mariadb_users | subelements('hosts') }}"
-  when: mariadb_users is defined and item.0.privs is undefined
-
-# privs follow the syntax for mysql_user as described in
-# https://docs.ansible.com/ansible/latest/modules/mysql_user_module.html#mysql-user-module
-- name: manage mariadb users (privs)
+  when: >
+    mariadb_users is defined and item.0.privs is undefined and
+    mariadb_socket is defined
+- name: manage mariadb users (no privs,host)
   mysql_user:
     login_user: root
     login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_host: "{{mariadb_host}}"
+    host: "{{item.1}}"
+    name: "{{item.0.name}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    state: "{{item.0.state|default('present')}}"
+  loop: "{{ mariadb_users | subelements('hosts') }}"
+  when: >
+    mariadb_users is defined and item.0.privs is undefined and
+    mariadb_socket is undefined
+
+# privs follow the syntax for mysql_user as described in
+# https://docs.ansible.com/ansible/latest/modules/mysql_user_module.html#mysql-user-module
+- name: manage mariadb users (privs,socket)
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_unix_socket: "{{mariadb_socket}}"
     host: "{{item.1}}"
     name: "{{item.0.name}}"
     password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
@@ -215,4 +300,20 @@
   loop: "{{ mariadb_users | subelements('hosts', 'skip_missing=True') }}"
   when: >
     mariadb_users is defined and
-    item.0.privs is defined
+    item.0.privs is defined and
+    mariadb_socket is defined
+- name: manage mariadb users (privs,host)
+  mysql_user:
+    login_user: root
+    login_password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry)}}"
+    login_host: "{{mariadb_host}}"
+    host: "{{item.1}}"
+    name: "{{item.0.name}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    state: "{{item.0.state|default('present')}}"
+    priv: "{{item.0.privs|join('/')}}"
+  loop: "{{ mariadb_users | subelements('hosts', 'skip_missing=True') }}"
+  when: >
+    mariadb_users is defined and
+    item.0.privs is defined and
+    mariadb_socket is undefined
