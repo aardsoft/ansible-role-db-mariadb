@@ -140,7 +140,7 @@
     login_host: "{{mariadb_host}}"
     password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
   ignore_errors: True
-  when: mariadb_root_passdb_entry is defined mariadb_socket is undefined
+  when: mariadb_root_passdb_entry is defined and mariadb_socket is undefined
 
 # this will only work if password got moved to an old entry, and new one
 # wasn't set yet
