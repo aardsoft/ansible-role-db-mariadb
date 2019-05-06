@@ -1,2 +1,5 @@
 - name: restart mysqld
   service: name=mysql state=restarted
+
+- name: restart firewalld
+  service: name=firewalld state=restarted

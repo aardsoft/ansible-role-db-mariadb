@@ -38,6 +38,15 @@
 # To update the root users password, configure mariadb_old_root_passdb_entry,
 # and move(!) the old password to that entry. Then either create a new root
 # password, or let ansible generate one on the next run.
+#
+# mariadb_allowed_ips       Ips which the firewall shall allow to access
+#                           port tcp/3306 (mysql)
+#
+# mariadb_allowed_ips:
+#   - 192.168.2.1
+#   - 172.16.0.1
+#   - 10.9.8.7
+#
 
 - name: set default password store
   set_fact:
@@ -318,4 +327,17 @@
   when: >
     mariadb_users is defined and
     item.0.privs is defined and
+    mariadb_socket is undefined
+
+- name: Open the Firewalld port mysql/tcp
+  firewalld:
+    rich_rule: 'rule family="ipv4" source address="{{item}}" service name="mysql" accept'
+    permanent: true
+    state: enabled
+  with_items: "{{mariadb_allowed_ips}}"
+  notify:
+    - restart firewalld
+  when: >
+    ansible_os_family == "RedHat" and
+    mariadb_allowed_ips is defined and
     mariadb_socket is undefined
