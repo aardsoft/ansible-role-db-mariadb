@@ -76,13 +76,13 @@
   when: ansible_os_family == "Suse"
 
 # a safe default
-- name: set default PyMySQL for RedHat
+- name: set default python version for RedHat
   set_fact:
-    redhat_pymysql_package: python2-PyMySQL
+    rh_pyver: 2
 
-- name: "adjust PyMySQL on Python3 systems (Python: {{ansible_python_version}})"
+- name: "adjust python version on Python3 systems (Python: {{ansible_python_version}})"
   set_fact:
-    redhat_pymysql_package: python3-PyMySQL
+    rh_pyver: 3
   when: ansible_python_version.split('.')[0] == '3'
 
 # PyMySQL depends on python2-cryptography, but it does not get installed
@@ -91,8 +91,8 @@
     role_packages:
       - mariadb
       - mariadb-server
-      - "{{redhat_pymysql_package}}"
-      - python2-cryptography
+      - python{{rh_pyver}}-PyMySQL
+      - python{{rh_pyver}}-cryptography
   when: ansible_os_family == "RedHat"
 
 - name: set default data directory
