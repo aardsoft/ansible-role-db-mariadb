@@ -65,7 +65,7 @@
 
 - name: set passdb extra arguments
   set_fact:
-    passdb_extra_arg: " create={{mariadb_password_create}} length={{mariadb_password_length}}"
+    mariadb_passdb_extra_arg: " create={{mariadb_password_create}} length={{mariadb_password_length}}"
 
 - name: set role packages for SuSE
   set_fact:
@@ -141,7 +141,7 @@
     name: root
     host: localhost
     login_unix_socket: "{{mariadb_socket}}"
-    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+mariadb_passdb_extra_arg)}}"
   ignore_errors: True
   when: mariadb_root_passdb_entry is defined and mariadb_socket is defined
 - name: set password for root/localhost (no-auth, host)
@@ -149,7 +149,7 @@
     name: root
     host: localhost
     login_host: "{{mariadb_host}}"
-    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+mariadb_passdb_extra_arg)}}"
   ignore_errors: True
   when: mariadb_root_passdb_entry is defined and mariadb_socket is undefined
 
@@ -162,7 +162,7 @@
     login_unix_socket: "{{mariadb_socket}}"
     name: root
     host: localhost
-    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+mariadb_passdb_extra_arg)}}"
   register: mysql_root_auth_old
   ignore_errors: True
   when: >
@@ -176,7 +176,7 @@
     login_host: "{{mariadb_host}}"
     name: root
     host: localhost
-    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+mariadb_passdb_extra_arg)}}"
   ignore_errors: True
   when: >
     mariadb_old_root_passdb_entry is defined and
@@ -191,7 +191,7 @@
     login_unix_socket: "{{mariadb_socket}}"
     name: root
     host_all: yes
-    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+mariadb_passdb_extra_arg)}}"
   when: mariadb_root_passdb_entry is defined and mariadb_socket is defined
 - name: set password for root/localhost (auth,host)
   mysql_user:
@@ -200,7 +200,7 @@
     login_host: "{{mariadb_host}}"
     name: root
     host_all: yes
-    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+mariadb_passdb_extra_arg)}}"
   when: mariadb_root_passdb_entry is defined and mariadb_socket is undefined
 
 - name: drop anonymous users (socket)
@@ -250,7 +250,7 @@
     login_unix_socket: "{{mariadb_socket}}"
     host: "{{item.1}}"
     name: "{{item.0.name}}"
-    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+mariadb_passdb_extra_arg)}}"
     state: absent
   loop: "{{ mariadb_users | subelements('disabled_hosts', 'skip_missing=True') }}"
   when: mariadb_users is defined and mariadb_socket is defined
@@ -261,7 +261,7 @@
     login_host: "{{mariadb_host}}"
     host: "{{item.1}}"
     name: "{{item.0.name}}"
-    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+mariadb_passdb_extra_arg)}}"
     state: absent
   loop: "{{ mariadb_users | subelements('disabled_hosts', 'skip_missing=True') }}"
   when: mariadb_users is defined and mariadb_socket is undefined
@@ -276,7 +276,7 @@
     login_unix_socket: "{{mariadb_socket}}"
     host: "{{item.1}}"
     name: "{{item.0.name}}"
-    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+mariadb_passdb_extra_arg)}}"
     state: "{{item.0.state|default('present')}}"
   loop: "{{ mariadb_users | subelements('hosts') }}"
   when: >
@@ -289,7 +289,7 @@
     login_host: "{{mariadb_host}}"
     host: "{{item.1}}"
     name: "{{item.0.name}}"
-    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+mariadb_passdb_extra_arg)}}"
     state: "{{item.0.state|default('present')}}"
   loop: "{{ mariadb_users | subelements('hosts') }}"
   when: >
@@ -305,7 +305,7 @@
     login_unix_socket: "{{mariadb_socket}}"
     host: "{{item.1}}"
     name: "{{item.0.name}}"
-    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+mariadb_passdb_extra_arg)}}"
     state: "{{item.0.state|default('present')}}"
     priv: "{{item.0.privs|join('/')}}"
   loop: "{{ mariadb_users | subelements('hosts', 'skip_missing=True') }}"
@@ -320,7 +320,7 @@
     login_host: "{{mariadb_host}}"
     host: "{{item.1}}"
     name: "{{item.0.name}}"
-    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+passdb_extra_arg)}}"
+    password: "{{lookup(mariadb_passdb, item.0.passdb_entry+mariadb_passdb_extra_arg)}}"
     state: "{{item.0.state|default('present')}}"
     priv: "{{item.0.privs|join('/')}}"
   loop: "{{ mariadb_users | subelements('hosts', 'skip_missing=True') }}"
