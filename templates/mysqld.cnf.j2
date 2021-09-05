@@ -7,3 +7,6 @@ bind_address = {{mariadb_bind_address}}
 datadir = {{mariadb_data_dir}}
 character-set-server = {{mariadb_character_set|default('utf8mb4')}}
 collation-server = {{mariadb_collation_server|default('utf8mb4_unicode_ci')}}
+{% if mariadb.innodb.default_row_format is defined %}
+innodb_default_row_format = {{mariadb.innodb.default_row_format}}
+{% endif %}
