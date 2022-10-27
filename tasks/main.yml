@@ -101,7 +101,7 @@
   when: mariadb_data_dir is undefined
 
 - include_role:
-    name: basic-host
+    name: data-utilities
     tasks_from: install_packages
 
 - name: set default db host
