@@ -47,6 +47,17 @@
 #   - 172.16.0.1
 #   - 10.9.8.7
 #
+- set_fact:
+    _config_only: false
+
+- set_fact:
+    _config_only: true
+  when: >
+    ansible_connection == "local"
+
+- set_fact:
+    config_prefix: ""
+  when: config_prefix is undefined
 
 - name: set default password store
   set_fact:
@@ -62,6 +73,14 @@
   set_fact:
     mariadb_password_create: "{{passdb_password_create|default(True)}}"
   when: mariadb_password_create is undefined
+
+- set_fact:
+    mariadb_user: mysql
+  when: mariadb_user is undefined
+
+- set_fact:
+    mariadb_group: mysql
+  when: mariadb_group is undefined
 
 - name: set passdb extra arguments
   set_fact:
@@ -103,6 +122,7 @@
 - include_role:
     name: data-utilities
     tasks_from: install_packages
+  when: _config_only == false
 
 - name: set default db host
   set_fact:
@@ -111,17 +131,17 @@
 
 - name: create sql data directory
   file:
-    path: "{{mariadb_data_dir}}"
-    owner: mysql
-    group: mysql
+    path: "{{config_prefix}}{{mariadb_data_dir}}"
+    owner: "{{mariadb_user}}"
+    group: "{{mariadb_group}}"
     mode: 0750
     state: directory
 
 - name: add configuration files
   template:
     src: "{{item}}.j2"
-    dest: "/etc/my.cnf.d/{{item}}"
-    group: mysql
+    dest: "{{config_prefix}}/etc/my.cnf.d/{{item}}"
+    group: "{{mariadb_group}}"
   register: mysql_cnf_status
   with_items:
     - mysqld.cnf
@@ -130,10 +150,13 @@
 
 - name: restart mariadb
   service: name=mariadb enabled=yes state=restarted
-  when: mysql_cnf_status is changed
+  when: >
+    mysql_cnf_status is changed and
+    _config_only == false
 
 - name: enable mariadb
   service: name=mariadb enabled=yes state=started
+  when: _config_only == false
 
 # this will only work the very first time (=empty root password)
 - name: set password for root/localhost (no-auth, socket)
@@ -143,7 +166,10 @@
     login_unix_socket: "{{mariadb_socket}}"
     password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+mariadb_passdb_extra_arg)}}"
   ignore_errors: True
-  when: mariadb_root_passdb_entry is defined and mariadb_socket is defined
+  when: >
+    mariadb_root_passdb_entry is defined and
+    mariadb_socket is defined and
+    _config_only == false
 - name: set password for root/localhost (no-auth, host)
   mysql_user:
     name: root
@@ -151,7 +177,10 @@
     login_host: "{{mariadb_host}}"
     password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+mariadb_passdb_extra_arg)}}"
   ignore_errors: True
-  when: mariadb_root_passdb_entry is defined and mariadb_socket is undefined
+  when: >
+    mariadb_root_passdb_entry is defined and
+    mariadb_socket is undefined and
+    _config_only == false
 
 # this will only work if password got moved to an old entry, and new one
 # wasn't set yet
@@ -168,7 +197,8 @@
   when: >
     mariadb_old_root_passdb_entry is defined and
     mariadb_root_passdb_entry is defined and
-    mariadb_socket is defined
+    mariadb_socket is defined and
+    _config_only == false
 - name: set password for root/localhost (auth,old-login,host)
   mysql_user:
     login_user: root
@@ -181,7 +211,8 @@
   when: >
     mariadb_old_root_passdb_entry is defined and
     mariadb_root_passdb_entry is defined and
-    mariadb_socket is undefined
+    mariadb_socket is undefined and
+    _config_only == false
 
 # this should work if a password entry is defined -> throw error if not
 - name: set password for root/localhost (auth,socket)
@@ -192,7 +223,10 @@
     name: root
     host_all: yes
     password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+mariadb_passdb_extra_arg)}}"
-  when: mariadb_root_passdb_entry is defined and mariadb_socket is defined
+  when: >
+    mariadb_root_passdb_entry is defined and
+    mariadb_socket is defined and
+    _config_only == false
 - name: set password for root/localhost (auth,host)
   mysql_user:
     login_user: root
@@ -201,7 +235,10 @@
     name: root
     host_all: yes
     password: "{{lookup(mariadb_passdb, mariadb_root_passdb_entry+mariadb_passdb_extra_arg)}}"
-  when: mariadb_root_passdb_entry is defined and mariadb_socket is undefined
+  when: >
+    mariadb_root_passdb_entry is defined and
+    mariadb_socket is undefined and
+    _config_only == false
 
 - name: drop anonymous users (socket)
   mysql_user:
@@ -211,7 +248,9 @@
     name: ''
     host_all: yes
     state: absent
-  when: mariadb_socket is defined
+  when: >
+    mariadb_socket is defined and
+    _config_only == false
 - name: drop anonymous users (host)
   mysql_user:
     login_user: root
@@ -220,7 +259,9 @@
     name: ''
     host_all: yes
     state: absent
-  when: mariadb_socket is undefined
+  when: >
+    mariadb_socket is undefined and
+    _config_only == false
 
 - name: create mariadb databases (socket)
   mysql_db:
@@ -232,7 +273,10 @@
     collation: "{{item.value.collation|default('utf8_general_ci')}}"
     state: "{{item.value.state|default('present')}}"
   with_dict: "{{mariadb_dbs}}"
-  when: mariadb_dbs is defined and mariadb_socket is defined
+  when: >
+    mariadb_dbs is defined and
+    mariadb_socket is defined and
+    _config_only == false
 - name: create mariadb databases (host)
   mysql_db:
     login_user: root
@@ -242,7 +286,10 @@
     encoding: "{{item.value.encoding|default('utf8')}}"
     state: "{{item.value.state|default('present')}}"
   with_dict: "{{mariadb_dbs}}"
-  when: mariadb_dbs is defined and mariadb_socket is undefined
+  when: >
+    mariadb_dbs is defined and
+    mariadb_socket is undefined and
+    _config_only == false
 
 - name: drop old hosts for mariadb users (socket)
   mysql_user:
@@ -254,7 +301,10 @@
     password: "{{lookup(mariadb_passdb, item.0.passdb_entry+mariadb_passdb_extra_arg)}}"
     state: absent
   loop: "{{ mariadb_users | subelements('disabled_hosts', 'skip_missing=True') }}"
-  when: mariadb_users is defined and mariadb_socket is defined
+  when: >
+    mariadb_users is defined and
+    mariadb_socket is defined and
+    _config_only == false
 - name: drop old hosts for mariadb users (host)
   mysql_user:
     login_user: root
@@ -265,7 +315,10 @@
     password: "{{lookup(mariadb_passdb, item.0.passdb_entry+mariadb_passdb_extra_arg)}}"
     state: absent
   loop: "{{ mariadb_users | subelements('disabled_hosts', 'skip_missing=True') }}"
-  when: mariadb_users is defined and mariadb_socket is undefined
+  when: >
+    mariadb_users is defined and
+    mariadb_socket is undefined and
+    _config_only == false
 
 # the structure used for the mariadb users is not ideal for direct lookups, but
 # using a list makes looping with a subelements list significantly easier to
@@ -282,7 +335,8 @@
   loop: "{{ mariadb_users | subelements('hosts') }}"
   when: >
     mariadb_users is defined and item.0.privs is undefined and
-    mariadb_socket is defined
+    mariadb_socket is defined and
+    _config_only == false
 - name: manage mariadb users (no privs,host)
   mysql_user:
     login_user: root
@@ -295,7 +349,8 @@
   loop: "{{ mariadb_users | subelements('hosts') }}"
   when: >
     mariadb_users is defined and item.0.privs is undefined and
-    mariadb_socket is undefined
+    mariadb_socket is undefined and
+    _config_only == false
 
 # privs follow the syntax for mysql_user as described in
 # https://docs.ansible.com/ansible/latest/modules/mysql_user_module.html#mysql-user-module
@@ -313,7 +368,8 @@
   when: >
     mariadb_users is defined and
     item.0.privs is defined and
-    mariadb_socket is defined
+    mariadb_socket is defined and
+    _config_only == false
 - name: manage mariadb users (privs,host)
   mysql_user:
     login_user: root
@@ -328,7 +384,8 @@
   when: >
     mariadb_users is defined and
     item.0.privs is defined and
-    mariadb_socket is undefined
+    mariadb_socket is undefined and
+    _config_only == false
 
 - name: configure firewall zones for mariadb
   firewalld:
@@ -343,7 +400,8 @@
     (firewalld_available is defined and
     firewalld_available == True) and
     mariadb_firewall_zones is defined and
-    mariadb_socket is undefined
+    mariadb_socket is undefined and
+    _config_only == false
 
 - name: open the firewalld port mysql/tcp for select IPs
   firewalld:
@@ -356,4 +414,5 @@
     (firewalld_available is defined and
     firewalld_available == True) and
     mariadb_allowed_ips is defined and
-    mariadb_socket is undefined
+    mariadb_socket is undefined and
+    _config_only == false

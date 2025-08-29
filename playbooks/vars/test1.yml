@@ -1,0 +1,18 @@
+mariadb_character_set: utf8
+mariadb_collation_server: utf8
+mariadb_bind_address: 127.0.0.8
+mariadb_data_dir: /var/lib/mariadb
+mariadb:
+  innodb:
+    default_row_format: test
+mariadb_users:
+  - name: user1
+    passdb_entry: mysql/user1
+    hosts:
+      - localhost
+      - some_host
+    disabled_hosts:
+      - some_old_host
+    privs:
+      - "db1.*:ALL"
+      - "db2.*:ALL"

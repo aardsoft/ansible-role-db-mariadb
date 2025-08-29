@@ -1,0 +1,3 @@
+# Ansible managed
+[mysql]
+default-character-set = utf8
